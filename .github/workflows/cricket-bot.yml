@@ -1,0 +1,68 @@
+name: Cricket Bot 24/7
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'  # Every 10 minutes
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  send-scores:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        pip install requests
+    
+    - name: Send Cricket Scores
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+        CRICKET_API_KEY: ${{ secrets.CRICKET_API_KEY }}
+      run: |
+        python -c "
+        import requests
+        import os
+        from datetime import datetime
+        
+        TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+        CHAT_ID = os.getenv('CHAT_ID')
+        CRICKET_API_KEY = os.getenv('CRICKET_API_KEY')
+        
+        # Get cricket scores
+        url = f'https://api.cricapi.com/v1/currentMatches?apikey={CRICKET_API_KEY}&offset=0'
+        response = requests.get(url)
+        data = response.json()
+        
+        # Format message
+        message = '🏏 *LIVE CRICKET SCORES* 🏏\n\n'
+        live_matches = [m for m in data['data'] if not m['matchEnded']]
+        
+        if live_matches:
+            for match in live_matches[:3]:
+                message += f\"🔴 *{match['name']}*\n\"
+                message += f\"📍 {match['venue']}\n\"
+                message += f\"📊 {match['status']}\n\"
+                if 'score' in match and match['score']:
+                    for score in match['score']:
+                        message += f\"   {score['inning']}: {score['r']}/{score['w']} ({score['o']} ov)\n\"
+                message += '\n'
+        else:
+            message += 'No live matches currently 🏏\n'
+        
+        message += f\"\n⏰ Updated: {datetime.now().strftime('%I:%M %p')}\"
+        
+        # Send to Telegram
+        tg_url = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage'
+        payload = {'chat_id': CHAT_ID, 'text': message, 'parse_mode': 'Markdown'}
+        requests.post(tg_url, json=payload)
+        print('✅ Scores sent successfully!')
+        "
